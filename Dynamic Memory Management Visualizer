@@ -1,0 +1,353 @@
+import React, { useEffect, useRef, useState } from "react";
+import * as d3 from "d3";
+
+export default function MemoryVisualizer() {
+  const defaultRefs = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+  const [refs, setRefs] = useState(defaultRefs.join(","));
+  const [refArray, setRefArray] = useState(defaultRefs);
+  const [frameCount, setFrameCount] = useState(4);
+  const [index, setIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState(700);
+  const [algorithm, setAlgorithm] = useState("FIFO");
+
+  const svgRef = useRef(null);
+  const timelineRef = useRef(null);
+
+  const framesRef = useRef([]);
+  const fifoQueueRef = useRef([]);
+  const lruMapRef = useRef(new Map());
+  const historyRef = useRef([]);
+
+  useEffect(() => {
+    const arr = refs
+      .split(/[,\\s]+/)
+      .map((s) => parseInt(s.trim()))
+      .filter((n) => !Number.isNaN(n));
+    setRefArray(arr.slice(0, 1000));
+    resetSimulation(arr.slice(0, 1000), frameCount);
+  }, []);
+
+  useEffect(() => {
+    resetSimulation(refArray, frameCount);
+  }, [frameCount]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (index >= refArray.length) {
+      setIsPlaying(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      stepForward();
+    }, speed);
+    return () => clearTimeout(t);
+  }, [isPlaying, index, speed]);
+
+  function resetSimulation(initialRefs = refArray, frames = frameCount) {
+    framesRef.current = Array.from({ length: frames }, (_, i) => ({
+      page: null,
+      touched: false,
+      id: i,
+    }));
+    fifoQueueRef.current = [];
+    lruMapRef.current = new Map();
+    historyRef.current = [];
+    setIndex(0);
+    renderVisualizer();
+    renderTimeline([]);
+  }
+
+  function stepForward() {
+    if (index >= refArray.length) return;
+    const page = refArray[index];
+    const event = handleAccess(page);
+    historyRef.current.push(event);
+    setIndex((i) => i + 1);
+    renderVisualizer(event);
+    renderTimeline(historyRef.current);
+  }
+
+  function handleAccess(page) {
+    const frames = framesRef.current;
+    const hitFrame = frames.find((f) => f.page === page);
+
+    if (hitFrame) {
+      hitFrame.touched = true;
+      lruMapRef.current.delete(page);
+      lruMapRef.current.set(page, { time: Date.now(), frame: hitFrame.id });
+      return {
+        page,
+        result: "hit",
+        frame: hitFrame.id,
+        evicted: null,
+        snapshot: JSON.parse(JSON.stringify(frames)),
+      };
+    }
+
+    const free = frames.find((f) => f.page === null);
+    if (free) {
+      free.page = page;
+      free.touched = true;
+      fifoQueueRef.current.push(free.id);
+      lruMapRef.current.set(page, { time: Date.now(), frame: free.id });
+      return {
+        page,
+        result: "page_fault_alloc",
+        frame: free.id,
+        evicted: null,
+        snapshot: JSON.parse(JSON.stringify(frames)),
+      };
+    }
+
+    let evictedFrameIdx = null;
+    if (algorithm === "FIFO") {
+      evictedFrameIdx = fifoQueueRef.current.shift();
+      fifoQueueRef.current.push(evictedFrameIdx);
+    } else if (algorithm === "LRU") {
+      const first = lruMapRef.current.entries().next().value;
+      if (first) evictedFrameIdx = first[1].frame;
+    }
+
+    const evictedPage = frames[evictedFrameIdx].page;
+    frames[evictedFrameIdx].page = page;
+    frames[evictedFrameIdx].touched = true;
+
+    lruMapRef.current.delete(evictedPage);
+    lruMapRef.current.set(page, { time: Date.now(), frame: evictedFrameIdx });
+
+    return {
+      page,
+      result: "page_fault_replace",
+      frame: evictedFrameIdx,
+      evicted: { page: evictedPage, frame: evictedFrameIdx },
+      snapshot: JSON.parse(JSON.stringify(frames)),
+    };
+  }
+
+  function renderVisualizer(latestEvent = null) {
+    const svg = d3.select(svgRef.current);
+    const frames = framesRef.current;
+
+    const width = 700;
+    const height = 160;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+    const padding = 20;
+    const frameW = 120;
+    const frameH = 80;
+    const gap = 16;
+
+    const g = svg.selectAll("g.frame").data(frames, (d) => d.id);
+
+    const gEnter = g
+      .enter()
+      .append("g")
+      .attr("class", "frame")
+      .attr("transform", (d, i) => `translate(${padding + i * (frameW + gap)}, 30)`);
+
+    gEnter
+      .append("rect")
+      .attr("rx", 8)
+      .attr("ry", 8)
+      .attr("width", frameW)
+      .attr("height", frameH)
+      .attr("fill", "#f8fafc")
+      .attr("stroke", "#cbd5e1")
+      .attr("stroke-width", 2);
+
+    gEnter
+      .append("text")
+      .attr("class", "page-text")
+      .attr("x", frameW / 2)
+      .attr("y", frameH / 2)
+      .attr("dominant-baseline", "middle")
+      .attr("text-anchor", "middle")
+      .style("font-size", "28px")
+      .style("font-weight", 700)
+      .text((d) => (d.page === null ? "—" : d.page));
+
+    g.merge(gEnter)
+      .transition()
+      .duration(350)
+      .attr("transform", (d, i) => `translate(${padding + i * (frameW + gap)}, 30)`);
+
+    g.merge(gEnter)
+      .select("rect")
+      .transition()
+      .duration(350)
+      .attr("fill", (d) => (d.page === null ? "#f8fafc" : "#e6fffa"))
+      .attr("stroke", (d) => (latestEvent && latestEvent.frame === d.id ? "#ef4444" : "#cbd5e1"))
+      .attr("stroke-width", (d) => (latestEvent && latestEvent.frame === d.id ? 3 : 2));
+
+    g.merge(gEnter)
+      .select(".page-text")
+      .transition()
+      .duration(350)
+      .style("opacity", 1)
+      .text((d) => (d.page === null ? "—" : d.page));
+
+    if (latestEvent && latestEvent.evicted) {
+      const evIdx = latestEvent.evicted.frame;
+      const evGroup = svg.selectAll("g.frame").filter((d) => d.id === evIdx);
+      evGroup
+        .select("rect")
+        .transition()
+        .duration(150)
+        .attr("fill", "#fff7ed")
+        .transition()
+        .duration(300)
+        .attr("fill", "#e6fffa");
+    }
+  }
+
+  function renderTimeline(events) {
+    const container = d3.select(timelineRef.current);
+    container.selectAll("div.event").remove();
+
+    container
+      .selectAll("div.event")
+      .data(events.slice().reverse(), (d, i) => i)
+      .enter()
+      .append("div")
+      .attr("class", "event flex items-center gap-3 p-2 border-b")
+      .style("font-family", "Inter, ui-sans-serif")
+      .html((d) => {
+        const ev = d;
+        if (ev.result === "hit")
+          return `Access <b>${ev.page}</b> — <span class='text-green-600'>HIT</span> (frame ${ev.frame})`;
+        if (ev.result === "page_fault_alloc")
+          return `Access <b>${ev.page}</b> — <span class='text-orange-600'>PAGE FAULT</span> (allocated frame ${ev.frame})`;
+        return `Access <b>${ev.page}</b> — <span class='text-red-600'>PAGE FAULT (replace)</span> evicted <b>${ev.evicted.page}</b> from frame ${ev.evicted.frame}`;
+      });
+  }
+
+  function onApplyInputs() {
+    const arr = refs
+      .split(/[,\\s]+/)
+      .map((s) => parseInt(s.trim()))
+      .filter((n) => !Number.isNaN(n));
+    setRefArray(arr);
+    resetSimulation(arr, frameCount);
+  }
+
+  function onPlayPause() {
+    setIsPlaying((p) => !p);
+  }
+
+  function onReset() {
+    resetSimulation(refArray, frameCount);
+    setIsPlaying(false);
+  }
+
+  useEffect(() => {
+    renderVisualizer();
+    renderTimeline([]);
+  }, []);
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Dynamic Memory Visualizer — Starter</h1>
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-1 bg-white p-4 rounded-lg shadow-sm">
+          <label className="block text-sm font-medium">Reference string (comma or space separated)</label>
+          <textarea
+            className="mt-2 p-2 border rounded w-full h-28"
+            value={refs}
+            onChange={(e) => setRefs(e.target.value)}
+          />
+
+          <label className="block text-sm font-medium mt-3">Frames</label>
+          <input
+            type="number"
+            min={1}
+            max={12}
+            value={frameCount}
+            onChange={(e) => setFrameCount(Number(e.target.value))}
+            className="mt-2 p-2 border rounded w-full"
+          />
+
+          <label className="block text-sm font-medium mt-3">Algorithm</label>
+          <select
+            value={algorithm}
+            onChange={(e) => setAlgorithm(e.target.value)}
+            className="mt-2 p-2 border rounded w-full"
+          >
+            <option>FIFO</option>
+            <option>LRU</option>
+          </select>
+
+          <div className="flex gap-2 mt-4">
+            <button onClick={onApplyInputs} className="px-3 py-2 bg-sky-600 text-white rounded">
+              Apply
+            </button>
+            <button onClick={onReset} className="px-3 py-2 border rounded">
+              Reset
+            </button>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center gap-2">
+              <button onClick={onPlayPause} className="px-3 py-2 bg-emerald-600 text-white rounded">
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <button
+                onClick={() => {
+                  setIsPlaying(false);
+                  stepForward();
+                }}
+                className="px-3 py-2 border rounded"
+              >
+                Step
+              </button>
+            </div>
+
+            <label className="mt-3 block text-sm">Speed (ms per step)</label>
+            <input
+              type="range"
+              min={100}
+              max={1500}
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-sm mt-1">{speed} ms</div>
+          </div>
+        </div>
+
+        <div className="col-span-2 bg-white p-4 rounded-lg shadow-sm">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-sm text-gray-600">Frames: {frameCount} • Algorithm: {algorithm}</div>
+            <div className="text-sm text-gray-600">
+              Step: {index} / {refArray.length}
+            </div>
+          </div>
+
+          <svg ref={svgRef} className="w-full h-40 bg-gray-50 rounded"></svg>
+
+          <div className="mt-4">
+            <div className="font-medium">Reference stream</div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {refArray.map((r, i) => (
+                <div
+                  key={i}
+                  className={`px-2 py-1 rounded border ${
+                    i === index ? "bg-sky-100 border-sky-400" : "bg-white"
+                  }`}
+                >
+                  {r}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="col-span-3 bg-white p-4 rounded-lg shadow-sm mt-4">
+          <div className="font-medium mb-2">Event Log (most recent first)</div>
+          <div ref={timelineRef} className="divide-y max-h-48 overflow-auto"></div>
+        </div>
+      </div>
+    </div>
+  );
+}
