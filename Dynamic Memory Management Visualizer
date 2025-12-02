@@ -1,353 +1,300 @@
-import React, { useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Memory Management Visualizer</title>
 
-export default function MemoryVisualizer() {
-  const defaultRefs = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
-  const [refs, setRefs] = useState(defaultRefs.join(","));
-  const [refArray, setRefArray] = useState(defaultRefs);
-  const [frameCount, setFrameCount] = useState(4);
-  const [index, setIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(700);
-  const [algorithm, setAlgorithm] = useState("FIFO");
+  <!-- Google Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  const svgRef = useRef(null);
-  const timelineRef = useRef(null);
+  <style>
+    :root {
+      /* default (dark) theme values */
+      --bg-page: radial-gradient(circle at top, rgba(15,23,42,0.9) 0, #020617 45%, #020617 100%);
+      --bg-img: url("https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1600&q=80");
 
-  const framesRef = useRef([]);
-  const fifoQueueRef = useRef([]);
-  const lruMapRef = useRef(new Map());
-  const historyRef = useRef([]);
+      --glass-bg: rgba(15, 23, 42, 0.72);
+      --glass-border: rgba(148, 163, 184, 0.55);
+      --glass-highlight: rgba(56, 189, 248, 0.35);
 
-  useEffect(() => {
-    const arr = refs
-      .split(/[,\\s]+/)
-      .map((s) => parseInt(s.trim()))
-      .filter((n) => !Number.isNaN(n));
-    setRefArray(arr.slice(0, 1000));
-    resetSimulation(arr.slice(0, 1000), frameCount);
-  }, []);
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
 
-  useEffect(() => {
-    resetSimulation(refArray, frameCount);
-  }, [frameCount]);
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.14);
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    if (index >= refArray.length) {
-      setIsPlaying(false);
-      return;
-    }
-    const t = setTimeout(() => {
-      stepForward();
-    }, speed);
-    return () => clearTimeout(t);
-  }, [isPlaying, index, speed]);
+      --hit: #4ade80;
+      --fault: #fb923c;
+      --danger: #f97373;
 
-  function resetSimulation(initialRefs = refArray, frames = frameCount) {
-    framesRef.current = Array.from({ length: frames }, (_, i) => ({
-      page: null,
-      touched: false,
-      id: i,
-    }));
-    fifoQueueRef.current = [];
-    lruMapRef.current = new Map();
-    historyRef.current = [];
-    setIndex(0);
-    renderVisualizer();
-    renderTimeline([]);
-  }
+      --frame-border: rgba(148, 163, 184, 0.72);
+      --frame-bg-1: rgba(15, 23, 42, 0.98);
+      --frame-bg-2: rgba(30, 64, 175, 0.35);
 
-  function stepForward() {
-    if (index >= refArray.length) return;
-    const page = refArray[index];
-    const event = handleAccess(page);
-    historyRef.current.push(event);
-    setIndex((i) => i + 1);
-    renderVisualizer(event);
-    renderTimeline(historyRef.current);
-  }
+      --chip-bg: rgba(15, 23, 42, 0.85);
+      --log-bg: rgba(15, 23, 42, 0.96);
 
-  function handleAccess(page) {
-    const frames = framesRef.current;
-    const hitFrame = frames.find((f) => f.page === page);
-
-    if (hitFrame) {
-      hitFrame.touched = true;
-      lruMapRef.current.delete(page);
-      lruMapRef.current.set(page, { time: Date.now(), frame: hitFrame.id });
-      return {
-        page,
-        result: "hit",
-        frame: hitFrame.id,
-        evicted: null,
-        snapshot: JSON.parse(JSON.stringify(frames)),
-      };
+      --shadow-strong: 0 26px 60px rgba(15, 23, 42, 0.9);
+      --shadow-soft: 0 16px 36px rgba(15, 23, 42, 0.75);
     }
 
-    const free = frames.find((f) => f.page === null);
-    if (free) {
-      free.page = page;
-      free.touched = true;
-      fifoQueueRef.current.push(free.id);
-      lruMapRef.current.set(page, { time: Date.now(), frame: free.id });
-      return {
-        page,
-        result: "page_fault_alloc",
-        frame: free.id,
-        evicted: null,
-        snapshot: JSON.parse(JSON.stringify(frames)),
-      };
+    body.theme-light {
+      --bg-page: radial-gradient(circle at top, #e0f2fe 0, #f3f4f6 50%, #e5e7eb 100%);
+      --bg-img: url("https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=1600&q=80");
+
+      --glass-bg: rgba(255, 255, 255, 0.78);
+      --glass-border: rgba(148, 163, 184, 0.6);
+      --glass-highlight: rgba(59, 130, 246, 0.16);
+
+      --text-main: #0f172a;
+      --text-muted: #6b7280;
+
+      --accent: #16a34a;
+      --accent-soft: rgba(22, 163, 74, 0.12);
+
+      --hit: #16a34a;
+      --fault: #ea580c;
+      --danger: #dc2626;
+
+      --frame-border: rgba(148, 163, 184, 0.85);
+      --frame-bg-1: rgba(248, 250, 252, 0.92);
+      --frame-bg-2: rgba(191, 219, 254, 0.7);
+
+      --chip-bg: rgba(255, 255, 255, 0.85);
+      --log-bg: rgba(241, 245, 249, 0.96);
+
+      --shadow-strong: 0 24px 60px rgba(15, 23, 42, 0.28);
+      --shadow-soft: 0 14px 30px rgba(15, 23, 42, 0.18);
     }
 
-    let evictedFrameIdx = null;
-    if (algorithm === "FIFO") {
-      evictedFrameIdx = fifoQueueRef.current.shift();
-      fifoQueueRef.current.push(evictedFrameIdx);
-    } else if (algorithm === "LRU") {
-      const first = lruMapRef.current.entries().next().value;
-      if (first) evictedFrameIdx = first[1].frame;
+    * {
+      box-sizing: border-box;
     }
 
-    const evictedPage = frames[evictedFrameIdx].page;
-    frames[evictedFrameIdx].page = page;
-    frames[evictedFrameIdx].touched = true;
-
-    lruMapRef.current.delete(evictedPage);
-    lruMapRef.current.set(page, { time: Date.now(), frame: evictedFrameIdx });
-
-    return {
-      page,
-      result: "page_fault_replace",
-      frame: evictedFrameIdx,
-      evicted: { page: evictedPage, frame: evictedFrameIdx },
-      snapshot: JSON.parse(JSON.stringify(frames)),
-    };
-  }
-
-  function renderVisualizer(latestEvent = null) {
-    const svg = d3.select(svgRef.current);
-    const frames = framesRef.current;
-
-    const width = 700;
-    const height = 160;
-
-    svg.attr("viewBox", `0 0 ${width} ${height}`);
-
-    const padding = 20;
-    const frameW = 120;
-    const frameH = 80;
-    const gap = 16;
-
-    const g = svg.selectAll("g.frame").data(frames, (d) => d.id);
-
-    const gEnter = g
-      .enter()
-      .append("g")
-      .attr("class", "frame")
-      .attr("transform", (d, i) => `translate(${padding + i * (frameW + gap)}, 30)`);
-
-    gEnter
-      .append("rect")
-      .attr("rx", 8)
-      .attr("ry", 8)
-      .attr("width", frameW)
-      .attr("height", frameH)
-      .attr("fill", "#f8fafc")
-      .attr("stroke", "#cbd5e1")
-      .attr("stroke-width", 2);
-
-    gEnter
-      .append("text")
-      .attr("class", "page-text")
-      .attr("x", frameW / 2)
-      .attr("y", frameH / 2)
-      .attr("dominant-baseline", "middle")
-      .attr("text-anchor", "middle")
-      .style("font-size", "28px")
-      .style("font-weight", 700)
-      .text((d) => (d.page === null ? "—" : d.page));
-
-    g.merge(gEnter)
-      .transition()
-      .duration(350)
-      .attr("transform", (d, i) => `translate(${padding + i * (frameW + gap)}, 30)`);
-
-    g.merge(gEnter)
-      .select("rect")
-      .transition()
-      .duration(350)
-      .attr("fill", (d) => (d.page === null ? "#f8fafc" : "#e6fffa"))
-      .attr("stroke", (d) => (latestEvent && latestEvent.frame === d.id ? "#ef4444" : "#cbd5e1"))
-      .attr("stroke-width", (d) => (latestEvent && latestEvent.frame === d.id ? 3 : 2));
-
-    g.merge(gEnter)
-      .select(".page-text")
-      .transition()
-      .duration(350)
-      .style("opacity", 1)
-      .text((d) => (d.page === null ? "—" : d.page));
-
-    if (latestEvent && latestEvent.evicted) {
-      const evIdx = latestEvent.evicted.frame;
-      const evGroup = svg.selectAll("g.frame").filter((d) => d.id === evIdx);
-      evGroup
-        .select("rect")
-        .transition()
-        .duration(150)
-        .attr("fill", "#fff7ed")
-        .transition()
-        .duration(300)
-        .attr("fill", "#e6fffa");
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text-main);
+      min-height: 100vh;
+      background-image:
+        linear-gradient(to bottom, rgba(15,23,42,0.9), rgba(15,23,42,0.65)),
+        var(--bg-img),
+        var(--bg-page);
+      background-size: cover;
+      background-attachment: fixed;
+      background-position: center;
     }
-  }
 
-  function renderTimeline(events) {
-    const container = d3.select(timelineRef.current);
-    container.selectAll("div.event").remove();
+    .backdrop-overlay {
+      min-height: 100vh;
+      backdrop-filter: blur(12px);
+      padding-bottom: 40px;
+    }
 
-    container
-      .selectAll("div.event")
-      .data(events.slice().reverse(), (d, i) => i)
-      .enter()
-      .append("div")
-      .attr("class", "event flex items-center gap-3 p-2 border-b")
-      .style("font-family", "Inter, ui-sans-serif")
-      .html((d) => {
-        const ev = d;
-        if (ev.result === "hit")
-          return `Access <b>${ev.page}</b> — <span class='text-green-600'>HIT</span> (frame ${ev.frame})`;
-        if (ev.result === "page_fault_alloc")
-          return `Access <b>${ev.page}</b> — <span class='text-orange-600'>PAGE FAULT</span> (allocated frame ${ev.frame})`;
-        return `Access <b>${ev.page}</b> — <span class='text-red-600'>PAGE FAULT (replace)</span> evicted <b>${ev.evicted.page}</b> from frame ${ev.evicted.frame}`;
-      });
-  }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 26px 18px 40px;
+    }
 
-  function onApplyInputs() {
-    const arr = refs
-      .split(/[,\\s]+/)
-      .map((s) => parseInt(s.trim()))
-      .filter((n) => !Number.isNaN(n));
-    setRefArray(arr);
-    resetSimulation(arr, frameCount);
-  }
+    /* Header */
 
-  function onPlayPause() {
-    setIsPlaying((p) => !p);
-  }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
 
-  function onReset() {
-    resetSimulation(refArray, frameCount);
-    setIsPlaying(false);
-  }
+    .title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
 
-  useEffect(() => {
-    renderVisualizer();
-    renderTimeline([]);
-  }, []);
+    .title-top-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
 
-  return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Dynamic Memory Visualizer — Starter</h1>
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-1 bg-white p-4 rounded-lg shadow-sm">
-          <label className="block text-sm font-medium">Reference string (comma or space separated)</label>
-          <textarea
-            className="mt-2 p-2 border rounded w-full h-28"
-            value={refs}
-            onChange={(e) => setRefs(e.target.value)}
-          />
+    .title-main {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-          <label className="block text-sm font-medium mt-3">Frames</label>
-          <input
-            type="number"
-            min={1}
-            max={12}
-            value={frameCount}
-            onChange={(e) => setFrameCount(Number(e.target.value))}
-            className="mt-2 p-2 border rounded w-full"
-          />
+    .title-accent {
+      width: 9px;
+      height: 28px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #22c55e, #4ade80);
+      box-shadow: 0 0 18px rgba(34, 197, 94, 0.9);
+    }
 
-          <label className="block text-sm font-medium mt-3">Algorithm</label>
-          <select
-            value={algorithm}
-            onChange={(e) => setAlgorithm(e.target.value)}
-            className="mt-2 p-2 border rounded w-full"
-          >
-            <option>FIFO</option>
-            <option>LRU</option>
-          </select>
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      max-width: 580px;
+    }
 
-          <div className="flex gap-2 mt-4">
-            <button onClick={onApplyInputs} className="px-3 py-2 bg-sky-600 text-white rounded">
-              Apply
-            </button>
-            <button onClick={onReset} className="px-3 py-2 border rounded">
-              Reset
-            </button>
-          </div>
+    .dev-badge {
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-border);
+      background: var(--chip-bg);
+      box-shadow: var(--shadow-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
 
-          <div className="mt-4">
-            <div className="flex items-center gap-2">
-              <button onClick={onPlayPause} className="px-3 py-2 bg-emerald-600 text-white rounded">
-                {isPlaying ? "Pause" : "Play"}
-              </button>
-              <button
-                onClick={() => {
-                  setIsPlaying(false);
-                  stepForward();
-                }}
-                className="px-3 py-2 border rounded"
-              >
-                Step
-              </button>
-            </div>
+    .dev-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #22c55e, #0ea5e9);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.7);
+    }
 
-            <label className="mt-3 block text-sm">Speed (ms per step)</label>
-            <input
-              type="range"
-              min={100}
-              max={1500}
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
-              className="w-full"
-            />
-            <div className="text-sm mt-1">{speed} ms</div>
-          </div>
-        </div>
+    .dev-badge span.name {
+      font-weight: 600;
+      color: var(--text-main);
+    }
 
-        <div className="col-span-2 bg-white p-4 rounded-lg shadow-sm">
-          <div className="flex justify-between items-center mb-2">
-            <div className="text-sm text-gray-600">Frames: {frameCount} • Algorithm: {algorithm}</div>
-            <div className="text-sm text-gray-600">
-              Step: {index} / {refArray.length}
-            </div>
-          </div>
+    .dev-badge small {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
 
-          <svg ref={svgRef} className="w-full h-40 bg-gray-50 rounded"></svg>
+    .header-right {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-end;
+    }
 
-          <div className="mt-4">
-            <div className="font-medium">Reference stream</div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {refArray.map((r, i) => (
-                <div
-                  key={i}
-                  className={`px-2 py-1 rounded border ${
-                    i === index ? "bg-sky-100 border-sky-400" : "bg-white"
-                  }`}
-                >
-                  {r}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+    .theme-toggle {
+      padding: 6px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-border);
+      background: var(--chip-bg);
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-muted);
+      box-shadow: var(--shadow-soft);
+      transition: transform 120ms ease, box-shadow 140ms ease, border 140ms ease;
+    }
 
-        <div className="col-span-3 bg-white p-4 rounded-lg shadow-sm mt-4">
-          <div className="font-medium mb-2">Event Log (most recent first)</div>
-          <div ref={timelineRef} className="divide-y max-h-48 overflow-auto"></div>
-        </div>
-      </div>
-    </div>
-  );
-}
+    .theme-toggle:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+      border-color: var(--glass-highlight);
+    }
+
+    .theme-toggle span.icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      background: linear-gradient(135deg, rgba(250, 204, 21, 0.15), rgba(56, 189, 248, 0.18));
+    }
+
+    /* Glass cards */
+
+    .card {
+      position: relative;
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at top left, var(--glass-highlight), transparent 55%),
+        var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      padding: 18px 18px 20px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow-strong);
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(135deg, rgba(255,255,255,0.07), transparent 70%);
+      mix-blend-mode: soft-light;
+    }
+
+    .card-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Controls layout */
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(260px, 2.1fr) repeat(3, minmax(140px, 1.05fr)) 200px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 1100px) {
+      .controls {
+        grid-template-columns: minmax(260px, 2fr) repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 780px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+
+    textarea,
+    input,
+    select {
+      margin-top: 6px;
+      padding: 8px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text-main);
+      font-size: 13px;
