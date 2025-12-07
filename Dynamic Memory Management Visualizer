@@ -848,3 +848,58 @@ color: var(--text-muted);
           </div>
         </div>
       </section>
+<section class="card">
+        <div class="card-inner">
+          <div class="summary-bar">
+            <div class="summary-chip">
+              Frames: <strong id="framesCount">4</strong>
+            </div>
+            <div class="summary-chip">
+              Algorithm: <strong id="algoName">FIFO</strong>
+            </div>
+            <div class="summary-chip badge">
+              Step: <strong id="stepInfo">0 / 0</strong>
+            </div>
+          </div>
+
+          <div class="frames" id="framesArea"></div>
+
+          <div class="section-header">
+            <span class="section-title">Reference Stream</span>
+            <div class="section-line"></div>
+          </div>
+          <div id="streamArea" class="stream"></div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Hits</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="hits">0</div>
+                <div class="stat-suffix">pages</div>
+              </div>
+              <div class="stat-pill hit">Page already present in frame</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-label">Faults</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="faults">0</div>
+                <div class="stat-suffix">page faults</div>
+              </div>
+              <div class="stat-pill fault">New page loaded or replaced</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-label">Hit Ratio</div>
+              <div class="stat-value-row">
+                <div class="stat-value" id="hitRatio">0</div>
+                <div class="stat-suffix">hits / access</div>
+              </div>
+              <div class="stat-pill ratio">Overall efficiency of memory usage</div>
+            </div>
+          </div>
+
+          <div class="section-header" style="margin-top: 22px;">
+            <span class="section-title">Event Log</span>
+            <div class="section-line"></div>
+          </div>
