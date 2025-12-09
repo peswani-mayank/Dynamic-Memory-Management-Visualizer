@@ -903,3 +903,98 @@ color: var(--text-muted);
             <span class="section-title">Event Log</span>
             <div class="section-line"></div>
           </div>
+<div class="log">
+            <div class="log-header">
+              <span class="label">Most recent operations</span>
+              <div class="log-badge">Access · Hit / Fault · Frame action</div>
+            </div>
+            <div id="logArea"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const refInput = document.getElementById("refInput");
+      const framesInput = document.getElementById("framesInput");
+      const algoSelect = document.getElementById("algoSelect");
+      const applyBtn = document.getElementById("applyBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const playBtn = document.getElementById("playBtn");
+      const stepBtn = document.getElementById("stepBtn");
+      const framesArea = document.getElementById("framesArea");
+      const streamArea = document.getElementById("streamArea");
+      const logArea = document.getElementById("logArea");
+      const framesCountEl = document.getElementById("framesCount");
+      const algoNameEl = document.getElementById("algoName");
+      const stepInfo = document.getElementById("stepInfo");
+      const hitsEl = document.getElementById("hits");
+      const faultsEl = document.getElementById("faults");
+      const hitRatioEl = document.getElementById("hitRatio");
+      const speedEl = document.getElementById("speed");
+      const speedVal = document.getElementById("speedVal");
+
+      const themeToggle = document.getElementById("themeToggle");
+      const themeIcon = document.getElementById("themeIcon");
+      const themeLabel = document.getElementById("themeLabel");
+
+      let refs = [];
+      let frames = [];
+      let fifoQueue = [];
+      let lruMap = new Map();
+      let history = [];
+      let index = 0;
+      let playing = false;
+      let timer = null;
+
+      function parseRefs(text) {
+        return text
+          .trim()
+          .split(/[\s,]+/)
+          .map((s) => parseInt(s))
+          .filter((n) => !isNaN(n));
+      }
+
+      function renderFrames() {
+        framesArea.innerHTML = "";
+        frames.forEach((f, i) => {
+          const div = document.createElement("div");
+          const latest = history.length ? history[history.length - 1] : null;
+          div.className = "frame" + (latest && latest.frame === i ? " active" : "");
+          div.textContent = f.page === null ? "—" : f.page;
+          const label = document.createElement("span");
+          label.textContent = "Frame " + i;
+          label.className = "label";
+          div.appendChild(label);
+          framesArea.appendChild(div);
+        });
+      }
+
+      function renderStream() {
+        streamArea.innerHTML = "";
+        refs.forEach((r, i) => {
+          const s = document.createElement("div");
+          s.className = "refItem" + (i === index ? " current" : "");
+          s.textContent = r;
+          streamArea.appendChild(s);
+        });
+      }
+
+      function addLog(msg) {
+        const el = document.createElement("div");
+        el.className = "logItem";
+        el.innerHTML = msg;
+        logArea.insertBefore(el, logArea.firstChild);
+      }
+
+      function updateStats() {
+        const hits = history.filter((h) => h.result === "hit").length;
+        const faults = history.filter((h) => h.result !== "hit").length;
+        const total = history.length;
+        hitsEl.textContent = hits;
+        faultsEl.textContent = faults;
+        hitRatioEl.textContent = total ? (hits / total).toFixed(2) : "0";
+        stepInfo.textContent = `${index} / ${refs.length}`;
+      }
