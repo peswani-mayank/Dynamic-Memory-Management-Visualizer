@@ -998,3 +998,175 @@ color: var(--text-muted);
         hitRatioEl.textContent = total ? (hits / total).toFixed(2) : "0";
         stepInfo.textContent = `${index} / ${refs.length}`;
       }
+function resetSimulation() {
+        const fcount = Math.max(1, parseInt(framesInput.value) || 4);
+        frames = Array.from({ length: fcount }, () => ({ page: null }));
+        fifoQueue = [];
+        lruMap = new Map();
+        history = [];
+        index = 0;
+        playing = false;
+        clearInterval(timer);
+        renderFrames();
+        renderStream();
+        logArea.innerHTML = "";
+        updateStats();
+        framesCountEl.textContent = fcount;
+        algoNameEl.textContent = algoSelect.value;
+        playBtn.textContent = "Play";
+      }
+
+      function accessPage(page) {
+        const hitFrameIndex = frames.findIndex((fr) => fr.page === page);
+        if (hitFrameIndex !== -1) {
+          lruMap.delete(page);
+          lruMap.set(page, Date.now());
+          const ev = {
+            page,
+            result: "hit",
+            frame: hitFrameIndex,
+            snapshot: JSON.parse(JSON.stringify(frames)),
+          };
+          history.push(ev);
+          addLog(
+            `Access <strong>${page}</strong> — ` +
+              `<span class="hit-tag">HIT</span> ` +
+              `(frame ${hitFrameIndex})`
+          );
+          return ev;
+        }
+
+        const freeIndex = frames.findIndex((fr) => fr.page === null);
+        if (freeIndex !== -1) {
+          frames[freeIndex].page = page;
+          fifoQueue.push(freeIndex);
+          lruMap.set(page, Date.now());
+          const ev = {
+            page,
+            result: "page_fault_alloc",
+            frame: freeIndex,
+            snapshot: JSON.parse(JSON.stringify(frames)),
+          };
+          history.push(ev);
+          addLog(
+            `Access <strong>${page}</strong> — ` +
+              `<span class="fault-tag">PAGE FAULT</span> ` +
+              `(allocated frame ${freeIndex})`
+          );
+          return ev;
+        }
+
+        let evictedIdx = 0;
+        if (algoSelect.value === "FIFO") {
+          evictedIdx = fifoQueue.shift();
+          fifoQueue.push(evictedIdx);
+        } else {
+          const entries = Array.from(lruMap.entries());
+          if (entries.length) {
+            entries.sort((a, b) => a[1] - b[1]);
+            const evictedPage = entries[0][0];
+            evictedIdx = frames.findIndex((f) => f.page === evictedPage);
+          } else {
+            evictedIdx = 0;
+          }
+        }
+
+        const evictedPage = frames[evictedIdx].page;
+        frames[evictedIdx].page = page;
+        lruMap.delete(evictedPage);
+        lruMap.set(page, Date.now());
+        const ev = {
+          page,
+          result: "page_fault_replace",
+          frame: evictedIdx,
+          evicted: { page: evictedPage, frame: evictedIdx },
+          snapshot: JSON.parse(JSON.stringify(frames)),
+        };
+        history.push(ev);
+        addLog(
+          `Access <strong>${page}</strong> — ` +
+            `<span class="replace-tag">PAGE FAULT (replace)</span> ` +
+            `evicted <strong>${evictedPage}</strong> from frame ${evictedIdx}`
+        );
+        return ev;
+      }
+
+      function step() {
+        if (index >= refs.length) {
+          playing = false;
+          clearInterval(timer);
+          playBtn.textContent = "Play";
+          return;
+        }
+        const p = refs[index];
+        accessPage(p);
+        index++;
+        renderFrames();
+        renderStream();
+        updateStats();
+      }
+
+      // Event handlers
+      applyBtn.addEventListener("click", () => {
+        refs = parseRefs(refInput.value);
+        resetSimulation();
+      });
+
+      resetBtn.addEventListener("click", () => resetSimulation());
+
+      stepBtn.addEventListener("click", () => {
+        playing = false;
+        clearInterval(timer);
+        playBtn.textContent = "Play";
+        step();
+      });
+
+      playBtn.addEventListener("click", () => {
+        if (playing) {
+          playing = false;
+          clearInterval(timer);
+          playBtn.textContent = "Play";
+          return;
+        }
+        playing = true;
+        playBtn.textContent = "Pause";
+        const ms = Math.max(50, parseInt(speedEl.value) || 700);
+        timer = setInterval(() => {
+          if (index >= refs.length) {
+            clearInterval(timer);
+            playing = false;
+            playBtn.textContent = "Play";
+            return;
+          }
+          step();
+        }, ms);
+      });
+
+      speedEl.addEventListener("input", () => {
+        speedVal.textContent = speedEl.value + " ms";
+      });
+
+      // Theme toggle
+      themeToggle.addEventListener("click", () => {
+        const body = document.body;
+        const isDark = body.classList.contains("theme-dark");
+        if (isDark) {
+          body.classList.remove("theme-dark");
+          body.classList.add("theme-light");
+          themeIcon.textContent = "☀️";
+          themeLabel.textContent = "Light mode";
+        } else {
+          body.classList.remove("theme-light");
+          body.classList.add("theme-dark");
+          themeIcon.textContent = "🌙";
+          themeLabel.textContent = "Dark mode";
+        }
+      });
+
+      // Initial setup
+      refs = parseRefs(refInput.value);
+      resetSimulation();
+    })();
+  </script>
+</body>
+</html>
